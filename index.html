@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="kk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="description" content="Talpyn — бастауыш сынып оқушыларына арналған интерактивті математика платформасы" />
+    <title>Talpyn</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!--
+      This is a Vite project: index.html can't be opened by double-clicking
+      the file (file://) — modules, routing and env vars all need a real
+      dev/build server. If that happens anyway, show a clear message
+      instead of a silent blank page. This is a plain (non-module) inline
+      script, so it runs synchronously during parsing, before the deferred
+      module script below ever gets a chance to run — the static module
+      script tag itself is left untouched so Vite's build still finds and
+      processes /src/main.tsx as the entry point normally.
+    -->
+    <script>
+      if (window.location.protocol === 'file:') {
+        document.getElementById('root').innerHTML =
+          '<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px 20px;gap:16px;font-family:system-ui,sans-serif;background:#f4f9f9;">' +
+          '<div style="font-size:48px">⚠️</div>' +
+          '<h1 style="margin:0;font-size:22px;color:#123b61">Дұрыс емес іске қосу тәсілі</h1>' +
+          '<p style="max-width:480px;color:#3a5568">Бұл жобаны тікелей index.html файлы арқылы ашуға болмайды. ' +
+          '<code>npm run dev</code> командасын пайдаланыңыз немесе сайтты Vercel арқылы жариялаңыз.</p>' +
+          '</div>'
+      }
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
