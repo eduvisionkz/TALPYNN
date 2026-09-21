@@ -10,12 +10,13 @@ export type LessonStage = 'kor' | 'qurastyr' | 'tusindir' | 'qoldan' | 'bekit'
 export type BlockType =
   | 'text' | 'image' | 'infographic' | 'video' | 'audio' | 'pdf'
   | 'question' | 'multiple_choice' | 'matching' | 'ordering' | 'drag_drop'
-  | 'number_builder' | 'short_answer' | 'explanation' | 'hint'
+  | 'number_builder' | 'short_answer' | 'fill_blank' | 'explanation' | 'hint'
 
 export type QuestionType =
   | 'multiple_choice' | 'matching' | 'ordering' | 'drag_drop'
   | 'number_builder' | 'short_answer' | 'number_line' | 'balance_scale'
   | 'clock' | 'money' | 'measurement' | 'expression_builder' | 'find_error'
+  | 'fill_blank'
 
 export type MaterialType = 'image' | 'video' | 'audio' | 'pdf' | 'other'
 
