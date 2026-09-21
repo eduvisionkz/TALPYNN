@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type DragEvent } from 'react'
 import { TalpynGuide } from './TalpynGuide'
 import { ICON_SETS, type IconName } from './IconRow'
 import type { LessonBlock, Question, QuestionOption } from '@/types/database'
@@ -72,6 +72,60 @@ function ShortAnswerTask({ data, onAnswered }: { data: BekitBlockData; onAnswere
       {attempted && !isCorrect && (
         <p className="form-error" role="alert">Әлі дұрыс емес. Тағы бір рет көр.</p>
       )}
+    </div>
+  )
+}
+
+function FillBlankTask({ data, onAnswered }: { data: BekitBlockData; onAnswered: OnAnswered }) {
+  const template = (data.block.configuration.template as string) ?? data.block.content ?? ''
+  const configuredAnswers = (data.block.configuration.answers as string[] | undefined) ?? []
+  const fallbackAnswer = String(data.question?.correct_answer ?? '').replace(/^"|"$/g, '')
+  const answers = configuredAnswers.length > 0 ? configuredAnswers : [fallbackAnswer]
+  const blanks = Math.max((template.match(/___/g) ?? []).length, answers.length, 1)
+  const [values, setValues] = useState<string[]>(() => Array.from({ length: blanks }, () => ''))
+  const [attempts, setAttempts] = useState(0)
+  const normalize = (value: string) => value.trim().toLocaleLowerCase('kk-KZ')
+  const isCorrect = values.every((value, index) => normalize(value) === normalize(answers[index] ?? ''))
+  const parts = template.split('___')
+
+  function check() {
+    setAttempts((value) => value + 1)
+    onAnswered(isCorrect, values)
+  }
+
+  return (
+    <div>
+      <h3>{data.block.title ?? 'Бос орынды толтыр'}</h3>
+      <div className="fill-blank-task">
+        {parts.map((part, index) => (
+          <span key={index}>
+            {part}
+            {index < blanks && (
+              <input
+                aria-label={`${index + 1}-бос орын`}
+                value={values[index]}
+                disabled={attempts > 0 && isCorrect}
+                onChange={(event) => {
+                  const next = [...values]
+                  next[index] = event.target.value
+                  setValues(next)
+                  setAttempts(0)
+                }}
+              />
+            )}
+          </span>
+        ))}
+      </div>
+      <div className="actions">
+        {!(attempts > 0 && isCorrect) && (
+          <button type="button" className="button primary" onClick={check} disabled={values.some((value) => !value.trim())}>
+            Тексеру
+          </button>
+        )}
+      </div>
+      {attempts > 0 && isCorrect && <p className="form-success">Дұрыс! {data.question?.explanation}</p>}
+      {attempts === 1 && !isCorrect && <p className="form-error">Талпын: «Сөйлемді қайта оқып, қай сан немесе сөз жетіспейтінін ойлан».</p>}
+      {attempts >= 2 && !isCorrect && <p className="form-error">Талпынның көмегі: {data.question?.hint ?? 'Алдыңғы мысалға қайта қара.'}</p>}
     </div>
   )
 }
@@ -327,6 +381,15 @@ function SortingTask({ data, onAnswered }: { data: BekitBlockData; onAnswered: O
     setChecked(false)
   }
 
+  function moveTo(from: number, to: number) {
+    if (from === to || Number.isNaN(from)) return
+    const next = [...order]
+    const [item] = next.splice(from, 1)
+    next.splice(to, 0, item)
+    setOrder(next)
+    setChecked(false)
+  }
+
   function check() {
     setChecked(true)
     onAnswered(order.every((v, i) => v === correctOrder[i]), order)
@@ -337,7 +400,18 @@ function SortingTask({ data, onAnswered }: { data: BekitBlockData; onAnswered: O
       <h3>{data.block.content}</h3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 360 }}>
         {order.map((item, i) => (
-          <div key={item} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid var(--line)', borderRadius: 11, padding: '8px 12px' }}>
+          <div
+            key={item}
+            className="draggable-item"
+            draggable
+            onDragStart={(event) => event.dataTransfer.setData('text/plain', String(i))}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault()
+              moveTo(Number(event.dataTransfer.getData('text/plain')), i)
+            }}
+          >
+            <span aria-hidden className="drag-handle">⋮⋮</span>
             <span style={{ flex: 1, fontWeight: 700 }}>{item}</span>
             <button type="button" className="button secondary" style={{ padding: '4px 10px' }} disabled={i === 0} onClick={() => move(i, -1)} aria-label="Жоғары жылжыту">↑</button>
             <button type="button" className="button secondary" style={{ padding: '4px 10px' }} disabled={i === order.length - 1} onClick={() => move(i, 1)} aria-label="Төмен жылжыту">↓</button>
@@ -373,6 +447,12 @@ function GroupingTask({ data, onAnswered }: { data: BekitBlockData; onAnswered: 
     setChecked(false)
   }
 
+  function drop(event: DragEvent, group: 'a' | 'b') {
+    event.preventDefault()
+    const label = event.dataTransfer.getData('text/plain')
+    if (items.some((item) => item.label === label)) assign(label, group)
+  }
+
   function check() {
     setChecked(true)
     onAnswered(items.every((item) => assignment[item.label] === item.group), assignment)
@@ -381,26 +461,28 @@ function GroupingTask({ data, onAnswered }: { data: BekitBlockData; onAnswered: 
   return (
     <div>
       <h3>{data.block.content}</h3>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 420 }}>
-        {items.map((item) => (
-          <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 10, border: '1px solid var(--line)', borderRadius: 11, padding: '8px 12px' }}>
-            <span style={{ flex: 1, fontWeight: 700 }}>{item.label}</span>
-            <button
-              type="button"
-              className="button secondary"
-              style={{ padding: '6px 12px', background: assignment[item.label] === 'a' ? 'var(--cyan)' : undefined, color: assignment[item.label] === 'a' ? '#fff' : undefined }}
-              onClick={() => assign(item.label, 'a')}
-            >
-              {groupALabel}
-            </button>
-            <button
-              type="button"
-              className="button secondary"
-              style={{ padding: '6px 12px', background: assignment[item.label] === 'b' ? 'var(--cyan)' : undefined, color: assignment[item.label] === 'b' ? '#fff' : undefined }}
-              onClick={() => assign(item.label, 'b')}
-            >
-              {groupBLabel}
-            </button>
+      <p className="status">Карточкаларды тиісті топқа сүйреп апар. Телефонда карточканы топтың ішінен таңдауға болады.</p>
+      <div className="drag-source">
+        {items.filter((item) => !assignment[item.label]).map((item) => (
+          <button key={item.label} type="button" className="draggable-card" draggable onDragStart={(event) => event.dataTransfer.setData('text/plain', item.label)}>
+            {item.label}
+          </button>
+        ))}
+      </div>
+      <div className="drop-grid">
+        {([['a', groupALabel], ['b', groupBLabel]] as const).map(([group, label]) => (
+          <div key={group} className="drop-zone" onDragOver={(event) => event.preventDefault()} onDrop={(event) => drop(event, group)}>
+            <strong>{label}</strong>
+            {items.filter((item) => assignment[item.label] === group).map((item) => (
+              <button key={item.label} type="button" className="dropped-card" onClick={() => assign(item.label, group === 'a' ? 'b' : 'a')}>
+                {item.label}
+              </button>
+            ))}
+            {items.filter((item) => !assignment[item.label]).map((item) => (
+              <button key={`pick-${item.label}`} type="button" className="mobile-pick" onClick={() => assign(item.label, group)}>
+                + {item.label}
+              </button>
+            ))}
           </div>
         ))}
       </div>
@@ -549,6 +631,7 @@ export function BekitStage({ blocks, onFinish, onAnswer }: BekitStageProps) {
         )}
       {current.block.block_type === 'ordering' && <SortingTask data={current} onAnswered={handleAnswered} />}
       {current.block.block_type === 'drag_drop' && <GroupingTask data={current} onAnswered={handleAnswered} />}
+      {current.block.block_type === 'fill_blank' && <FillBlankTask data={current} onAnswered={handleAnswered} />}
       {current.block.block_type === 'question' &&
         current.block.configuration.kind === 'expression_builder' && (
           <ExpressionBuilderTask data={current} onAnswered={handleAnswered} />
