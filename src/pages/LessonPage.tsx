@@ -4,7 +4,7 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
 import { LessonEngine } from '@/features/lesson/LessonEngine'
 import type { BekitBlockData } from '@/features/lesson/BekitStage'
-import type { LessonBlock, LessonStage, Question, QuestionOption, Topic } from '@/types/database'
+import type { LessonBlock, LessonStage, Material, Question, QuestionOption, Topic } from '@/types/database'
 
 const STAGE_ORDER: LessonStage[] = ['kor', 'qurastyr', 'tusindir', 'qoldan', 'bekit']
 
@@ -15,6 +15,7 @@ export function LessonPage() {
   const [blocksByStage, setBlocksByStage] = useState<Record<LessonStage, LessonBlock[]> | null>(null)
   const [qoldanQuestion, setQoldanQuestion] = useState<Question | null>(null)
   const [bekitBlocks, setBekitBlocks] = useState<BekitBlockData[]>([])
+  const [materials, setMaterials] = useState<Material[]>([])
   const [percent, setPercent] = useState(0)
   const [status, setStatus] = useState<'loading' | 'ready' | 'no-content' | 'not-found' | 'error' | 'no-supabase'>('loading')
 
@@ -36,6 +37,13 @@ export function LessonPage() {
         return
       }
       setTopic(topicData)
+
+      const { data: materialData } = await supabase
+        .from('materials')
+        .select('*')
+        .eq('topic_id', topicId)
+        .order('created_at', { ascending: true })
+      if (isMounted) setMaterials(materialData ?? [])
 
       const { data: blockData, error: blockError } = await supabase
         .from('lesson_blocks')
@@ -156,6 +164,26 @@ export function LessonPage() {
         userId={user?.id ?? null}
         onProgressChange={setPercent}
       />
+
+      {materials.length > 0 && (
+        <section className="lesson-materials" aria-labelledby="lesson-materials-title">
+          <div>
+            <span className="eyebrow">Қосымша оқу</span>
+            <h3 id="lesson-materials-title">Тақырып бойынша материалдар</h3>
+          </div>
+          <div className="material-link-grid">
+            {materials.map((material) => (
+              <a key={material.id} href={material.file_url} target="_blank" rel="noreferrer" className="material-link-card">
+                <span aria-hidden>{material.type === 'video' ? '▶' : '↗'}</span>
+                <div>
+                  <b>{material.title}</b>
+                  <small>{material.type === 'video' ? 'Бейнематериалды ашу' : 'Материалды ашу'}</small>
+                </div>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   )
 }
