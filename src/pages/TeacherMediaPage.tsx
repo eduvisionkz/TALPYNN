@@ -30,6 +30,7 @@ export function TeacherMediaPage() {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error' | 'not-found'>('loading')
   const [folder, setFolder] = useState<StorageFolder>('infographics')
   const [title, setTitle] = useState('')
+  const [externalUrl, setExternalUrl] = useState('')
   const [uploadState, setUploadState] = useState<'idle' | 'uploading' | 'error'>('idle')
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -101,12 +102,50 @@ export function TeacherMediaPage() {
     }
   }
 
+  async function handleAddExternalLink() {
+    if (!topic || !profile || !title.trim() || !externalUrl.trim()) return
+    let parsed: URL
+    try {
+      parsed = new URL(externalUrl.trim())
+      if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('invalid protocol')
+    } catch {
+      setUploadState('error')
+      setUploadError('Дұрыс https:// сілтемесін енгізіңіз.')
+      return
+    }
+    setUploadState('uploading')
+    setUploadError(null)
+    const { data, error } = await supabase
+      .from('materials')
+      .insert({
+        topic_id: topic.id,
+        title: title.trim(),
+        type: 'video',
+        file_url: parsed.toString(),
+        file_path: `external:${parsed.toString()}`,
+        file_size: null,
+        mime_type: 'text/uri-list',
+        uploaded_by: profile.id,
+      })
+      .select('*')
+      .single()
+    if (error || !data) {
+      setUploadState('error')
+      setUploadError('Сілтемені сақтау кезінде қате шықты.')
+      return
+    }
+    setMaterials((prev) => [data, ...prev])
+    setTitle('')
+    setExternalUrl('')
+    setUploadState('idle')
+  }
+
   async function handleDelete(material: Material) {
     if (!window.confirm(`«${material.title}» файлын өшіруді растайсыз ба? Бұл әрекетті қайтару мүмкін емес.`)) return
     setDeletingId(material.id)
     setDeleteError(null)
     try {
-      await deleteMaterial(material.file_path)
+      if (!material.file_path.startsWith('external:')) await deleteMaterial(material.file_path)
       const { error } = await supabase.from('materials').delete().eq('id', material.id)
       if (error) throw error
       setMaterials((prev) => prev.filter((m) => m.id !== material.id))
@@ -167,6 +206,22 @@ export function TeacherMediaPage() {
               />
             </label>
             {uploadState === 'uploading' && <p className="status">Жүктелуде...</p>}
+            {uploadState === 'error' && uploadError && <p className="form-error" role="status">{uploadError}</p>}
+          </div>
+
+          <div className="panel" style={{ marginBottom: 24 }}>
+            <h3>Сыртқы бейнесілтеме қосу</h3>
+            <label>
+              Материал атауы
+              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Мысалы: 7 саны" />
+            </label>
+            <label>
+              YouTube немесе Google Drive сілтемесі
+              <input type="url" value={externalUrl} onChange={(e) => setExternalUrl(e.target.value)} placeholder="https://..." />
+            </label>
+            <button type="button" className="button primary" onClick={handleAddExternalLink} disabled={uploadState === 'uploading' || !title.trim() || !externalUrl.trim()}>
+              {uploadState === 'uploading' ? 'Сақталуда...' : 'Сілтемені қосу'}
+            </button>
             {uploadState === 'error' && uploadError && <p className="form-error" role="status">{uploadError}</p>}
           </div>
 
