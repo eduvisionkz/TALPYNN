@@ -6,7 +6,7 @@ import { uploadMaterial, FileValidationError } from '@/lib/storage'
 import { ICON_SETS, type IconName } from '@/features/lesson/IconRow'
 import type { LessonBlock, Question, QuestionOption, Topic, Track } from '@/types/database'
 
-type BekitTaskType = 'multiple_choice' | 'short_answer' | 'matching'
+type BekitTaskType = 'multiple_choice' | 'short_answer' | 'matching' | 'fill_blank'
 type BekitUiKind = BekitTaskType | 'visual_matching' | 'sorting' | 'grouping' | 'expression_builder' | 'find_error' | 'measurement'
 
 const BEKIT_KIND_LABEL: Record<BekitUiKind, string> = {
@@ -19,6 +19,7 @@ const BEKIT_KIND_LABEL: Record<BekitUiKind, string> = {
   expression_builder: 'өрнек құрастыру',
   find_error: 'қатені тап',
   measurement: 'сызғышпен өлшеу',
+  fill_blank: 'бос орынды толтыру',
 }
 
 /** The DB has no dedicated block_type for expression_builder/find_error/
@@ -29,6 +30,7 @@ function bekitUiKind(task: BekitTask): BekitUiKind {
   const bt = task.block.block_type as string
   if (bt === 'ordering') return 'sorting'
   if (bt === 'drag_drop') return 'grouping'
+  if (bt === 'fill_blank') return 'fill_blank'
   if (bt === 'matching') {
     return task.block.configuration.kind === 'visual' ? 'visual_matching' : 'matching'
   }
@@ -489,6 +491,11 @@ function BekitTaskEditor({
   const [targetText, setTargetText] = useState(((task.block.configuration.target as string[] | undefined) ?? []).join('\n'))
   const [stepsText, setStepsText] = useState(((task.block.configuration.steps as string[] | undefined) ?? []).join('\n'))
   const [errorIndex, setErrorIndex] = useState(String((task.block.configuration.errorIndex as number) ?? 0))
+  const [blankTemplate, setBlankTemplate] = useState((task.block.configuration.template as string) ?? '')
+  const [blankAnswersText, setBlankAnswersText] = useState(
+    ((task.block.configuration.answers as string[] | undefined) ?? []).join('\n')
+  )
+  const [blankHint, setBlankHint] = useState(task.question?.hint ?? '')
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [deleting, setDeleting] = useState(false)
 
@@ -517,6 +524,11 @@ function BekitTaskEditor({
         ? { kind: 'expression_builder', tiles: tilesText.split('\n').map((s) => s.trim()).filter(Boolean), target: targetText.split('\n').map((s) => s.trim()).filter(Boolean) }
         : taskType === 'find_error'
         ? { kind: 'find_error', steps: stepsText.split('\n').map((s) => s.trim()).filter(Boolean), errorIndex: Number(errorIndex) }
+        : taskType === 'fill_blank'
+        ? {
+            template: blankTemplate,
+            answers: blankAnswersText.split('\n').map((s) => s.trim()).filter(Boolean),
+          }
         : {}
     const { error: blockError } = await supabase
       .from('lesson_blocks')
@@ -527,7 +539,23 @@ function BekitTaskEditor({
     let updatedQuestion = task.question
     let updatedOptions = task.options
 
-    if (taskType === 'expression_builder') {
+    if (taskType === 'fill_blank') {
+      const answers = (configuration.answers as string[]) ?? []
+      const questionPayload = {
+        lesson_block_id: task.block.id,
+        question_text: blankTemplate,
+        question_type: 'fill_blank' as const,
+        correct_answer: answers,
+        explanation: explanation || null,
+        hint: blankHint || null,
+        points: 1,
+      }
+      const { data: q, error: qError } = task.question
+        ? await supabase.from('questions').update(questionPayload).eq('id', task.question.id).select('*').single()
+        : await supabase.from('questions').insert(questionPayload).select('*').single()
+      if (qError || !q) { setSaveState('error'); return }
+      updatedQuestion = q
+    } else if (taskType === 'expression_builder') {
       const target = (configuration.target as string[]) ?? []
       const questionPayload = {
         lesson_block_id: task.block.id,
@@ -672,6 +700,30 @@ function BekitTaskEditor({
         </>
       )}
 
+      {taskType === 'fill_blank' && (
+        <>
+          <p className="status" style={{ fontWeight: 400 }}>
+            Бос орынның орнына үш төменгі сызық жазыңыз: ___ . Бірнеше бос орын болса, дұрыс жауаптарды төменде сол ретпен жеке жолдарға жазыңыз.
+          </p>
+          <label>
+            Бос орындары бар сөйлем немесе өрнек
+            <textarea value={blankTemplate} onChange={(e) => setBlankTemplate(e.target.value)} rows={3} placeholder="7 + ___ = 10" />
+          </label>
+          <label>
+            Дұрыс жауаптар (әр бос орынға бір жауап, жеке жолда)
+            <textarea value={blankAnswersText} onChange={(e) => setBlankAnswersText(e.target.value)} rows={3} placeholder={'3'} />
+          </label>
+          <label>
+            Талпынның кеңесі
+            <input type="text" value={blankHint} onChange={(e) => setBlankHint(e.target.value)} placeholder="10-ға толықтыратын санды ойлан." />
+          </label>
+          <label>
+            Дұрыс жауаптан кейінгі түсіндірме
+            <input type="text" value={explanation} onChange={(e) => setExplanation(e.target.value)} placeholder="7 + 3 = 10." />
+          </label>
+        </>
+      )}
+
       {taskType === 'matching' && (
         <label>
           Жұптар (әр жолда «сол,оң», мысалы 3,7)
@@ -773,6 +825,7 @@ const BEKIT_KIND_TO_BLOCK_TYPE: Record<BekitUiKind, string> = {
   expression_builder: 'question',
   find_error: 'question',
   measurement: 'question',
+  fill_blank: 'fill_blank',
 }
 
 function BekitEditor({ topicId, initialTasks }: { topicId: string; initialTasks: BekitTask[] }) {
@@ -788,6 +841,7 @@ function BekitEditor({ topicId, initialTasks }: { topicId: string; initialTasks:
       newType === 'expression_builder' ? { kind: 'expression_builder', tiles: [], target: [] } :
       newType === 'find_error' ? { kind: 'find_error', steps: [], errorIndex: 0 } :
       newType === 'measurement' ? { kind: 'measurement', unit: 'см', length: 5, maxScale: 10 } :
+      newType === 'fill_blank' ? { template: '', answers: [] } :
       {}
     const { data: block, error } = await supabase
       .from('lesson_blocks')
@@ -853,6 +907,7 @@ function BekitEditor({ topicId, initialTasks }: { topicId: string; initialTasks:
             <option value="expression_builder">Өрнек құрастыру (текшелерден)</option>
             <option value="find_error">Қатені тап (қадамдардан)</option>
             <option value="measurement">Сызғышпен өлшеу</option>
+            <option value="fill_blank">Бос орынды толтыру</option>
           </select>
         </label>
         <button type="button" className="button primary" onClick={addTask} disabled={adding}>
