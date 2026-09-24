@@ -608,7 +608,7 @@ export function BekitStage({ blocks, onFinish, onAnswer }: BekitStageProps) {
     }
   }
 
-  const currentAnswered = results.find((r) => r.blockId === current?.block.id)
+  const currentAnswered = [...results].reverse().find((r) => r.blockId === current?.block.id)
   const canAdvance = Boolean(currentAnswered?.isCorrect)
 
   if (!current) return null
